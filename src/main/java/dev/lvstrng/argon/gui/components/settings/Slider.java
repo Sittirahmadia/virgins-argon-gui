@@ -14,39 +14,26 @@ public final class Slider extends RenderableSetting {
 	public boolean dragging;
 	public double offsetX;
 	public double lerpedOffsetX = 0;
-
 	private final NumberSetting setting;
+	public Color currentColor1, currentColor2;
+	private Color hoverColor;
 
-	public Color currentColor1;
-	public Color currentColor2;
-	private Color currentAlpha;
-
-    public Slider(ModuleButton parent, Setting<?> setting, int offset) {
+	public Slider(ModuleButton parent, Setting<?> setting, int offset) {
 		super(parent, setting, offset);
 		this.setting = (NumberSetting) setting;
 	}
 
 	@Override
 	public void onUpdate() {
-        Color clr = Utils.getMainColor(0, parent.settings.indexOf(this)).darker();
-        Color clr2 = Utils.getMainColor(0, parent.settings.indexOf(this) + 1).darker();
-
-		if (currentColor1 == null)
-			currentColor1 = new Color(clr.getRed(), clr.getGreen(), clr.getBlue(), 0);
-		else currentColor1 = new Color(clr.getRed(), clr.getGreen(), clr.getBlue(), currentColor1.getAlpha());
-
-		if (currentColor2 == null)
-			currentColor2 = new Color(clr2.getRed(), clr2.getGreen(), clr2.getBlue(), 0);
-		else currentColor2 = new Color(clr2.getRed(), clr2.getGreen(), clr2.getBlue(), currentColor2.getAlpha());
-
-		int toAlpha = 255;
-
-		if (currentColor1.getAlpha() != toAlpha)
-			currentColor1 = ColorUtils.smoothAlphaTransition(0.05F, toAlpha, currentColor1);
-
-		if (currentColor2.getAlpha() != toAlpha)
-			currentColor2 = ColorUtils.smoothAlphaTransition(0.05F, toAlpha, currentColor2);
-
+		int idx = parent.settings.indexOf(this);
+		Color c1 = Utils.getMainColor(0, idx).darker();
+		Color c2 = Utils.getMainColor(0, idx + 1).darker();
+		if (currentColor1 == null) currentColor1 = new Color(c1.getRed(), c1.getGreen(), c1.getBlue(), 0);
+		else currentColor1 = new Color(c1.getRed(), c1.getGreen(), c1.getBlue(), currentColor1.getAlpha());
+		if (currentColor2 == null) currentColor2 = new Color(c2.getRed(), c2.getGreen(), c2.getBlue(), 0);
+		else currentColor2 = new Color(c2.getRed(), c2.getGreen(), c2.getBlue(), currentColor2.getAlpha());
+		if (currentColor1.getAlpha() != 255) currentColor1 = ColorUtils.smoothAlphaTransition(0.05F, 255, currentColor1);
+		if (currentColor2.getAlpha() != 255) currentColor2 = ColorUtils.smoothAlphaTransition(0.05F, 255, currentColor2);
 		super.onUpdate();
 	}
 
@@ -54,70 +41,60 @@ public final class Slider extends RenderableSetting {
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 		super.render(context, mouseX, mouseY, delta);
 
+		int ry = parentY() + parentOffset() + offset;
+		int rh = parentHeight();
+
 		offsetX = (setting.getValue() - setting.getMin()) / (setting.getMax() - setting.getMin()) * parentWidth();
-		lerpedOffsetX = MathUtils.goodLerp((float) (0.5 * delta), lerpedOffsetX, offsetX);
-		context.fillGradient(parentX(), parentY() + offset + parentOffset() + 25, (int) (parentX() + lerpedOffsetX), parentY() + offset + parentOffset() + parentHeight(), currentColor1.getRGB(), currentColor2.getRGB());
+		lerpedOffsetX = MathUtils.goodLerp((float)(0.5 * delta), lerpedOffsetX, offsetX);
 
-		TextRenderer.drawString(setting.getName() + ": " + setting.getValue(), context, parentX() + 5, (parentY() + parentOffset() + offset) + 9, new Color(245, 245, 245, 255).getRGB());
+		// Track bg
+		context.fill(parentX(), ry + 24, parentX() + parentWidth(), ry + rh - 3,
+				new Color(28, 28, 33, 180).getRGB());
+		// Fill gradient
+		context.fillGradient(parentX(), ry + 24, (int)(parentX() + lerpedOffsetX), ry + rh - 3,
+				currentColor1.getRGB(), currentColor2.getRGB());
 
+		// Name + value label
+		TextRenderer.drawString(setting.getName() + ": " + setting.getValue(), context,
+				parentX() + 8, ry + 9, new Color(195, 195, 200).getRGB());
+
+		// Hover
 		if (!parent.parent.dragging) {
-			int toHoverAlpha = isHovered(mouseX, mouseY) ? 15 : 0;
-
-			if (currentAlpha == null)
-				currentAlpha = new Color(255, 255, 255, toHoverAlpha);
-			else currentAlpha = new Color(255, 255, 255, currentAlpha.getAlpha());
-
-			if (currentAlpha.getAlpha() != toHoverAlpha)
-				currentAlpha = ColorUtils.smoothAlphaTransition(0.05F, toHoverAlpha, currentAlpha);
-
-			context.fill(parentX(), parentY() + parentOffset() + offset, parentX() + parentWidth(), parentY() + parentOffset() + offset + parentHeight(), currentAlpha.getRGB());
+			int toA = isHovered(mouseX, mouseY) ? 16 : 0;
+			if (hoverColor == null) hoverColor = new Color(255, 255, 255, toA);
+			else hoverColor = new Color(255, 255, 255, hoverColor.getAlpha());
+			if (hoverColor.getAlpha() != toA)
+				hoverColor = ColorUtils.smoothAlphaTransition(0.05F, toA, hoverColor);
+			context.fill(parentX(), ry, parentX() + parentWidth(), ry + rh, hoverColor.getRGB());
 		}
 	}
 
 	@Override
-	public void onGuiClose() {
-		this.currentColor1 = null;
-		this.currentColor2 = null;
-		super.onGuiClose();
-	}
+	public void onGuiClose() { currentColor1 = null; currentColor2 = null; super.onGuiClose(); }
 
 	private void slide(double mouseX) {
-		double a = mouseX - parentX();
-		double b = MathHelper.clamp(a / parentWidth(), 0, 1);
-		setting.setValue(MathUtils.roundToDecimal(b * (setting.getMax() - setting.getMin()) + setting.getMin(), setting.getIncrement()));
+		double pct = MathHelper.clamp((mouseX - parentX()) / parentWidth(), 0, 1);
+		setting.setValue(MathUtils.roundToDecimal(pct * (setting.getMax() - setting.getMin()) + setting.getMin(), setting.getIncrement()));
 	}
 
 	@Override
 	public void keyPressed(int keyCode, int scanCode, int modifiers) {
-		if(mouseOver && parent.extended) {
-			if(keyCode == GLFW.GLFW_KEY_BACKSPACE)
-				setting.setValue(setting.getOriginalValue());
-		}
-		super.keyPressed(keyCode, scanCode, modifiers);
+		if (mouseOver && parent.extended && keyCode == GLFW.GLFW_KEY_BACKSPACE)
+			setting.setValue(setting.getOriginalValue());
 	}
 
 	@Override
 	public void mouseClicked(double mouseX, double mouseY, int button) {
-		if (isHovered(mouseX, mouseY) && button == 0) {
-			dragging = true;
-			slide(mouseX);
-		}
-		super.mouseClicked(mouseX, mouseY, button);
+		if (isHovered(mouseX, mouseY) && button == 0) { dragging = true; slide(mouseX); }
 	}
 
 	@Override
 	public void mouseReleased(double mouseX, double mouseY, int button) {
-		if (dragging && button == 0)
-			dragging = false;
-
-		super.mouseReleased(mouseX, mouseY, button);
+		if (button == 0) dragging = false;
 	}
 
 	@Override
-	public void mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-		if (dragging)
-			slide(mouseX);
-
-		super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+	public void mouseDragged(double mouseX, double mouseY, int button, double dX, double dY) {
+		if (dragging) slide(mouseX);
 	}
 }

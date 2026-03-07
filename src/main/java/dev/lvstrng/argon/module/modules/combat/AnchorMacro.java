@@ -90,17 +90,20 @@ public final class AnchorMacro extends Module implements TickListener, ItemUseLi
     public void onDisable() {
         eventManager.remove(TickListener.class, this);
         eventManager.remove(ItemUseListener.class, this);
-        // Release sneak if we left it pressed
-        if (sneaking) {
+        // FIX: guard null player before releasing sneak key
+        if (sneaking && mc.player != null) {
             mc.options.sneakKey.setPressed(false);
             sneaking = false;
         }
+        resetTimers();
         super.onDisable();
     }
 
     @Override
     public void onTick() {
         if (mc.player == null || mc.world == null || mc.currentScreen != null) return;
+        // FIX: guard against null networkHandler (causes crash on disconnect)
+        if (mc.getNetworkHandler() == null) return;
 
         // Release sneak after short hold
         if (sneaking) {
@@ -133,6 +136,11 @@ public final class AnchorMacro extends Module implements TickListener, ItemUseLi
         }
 
         HitResult hit = WorldUtils.getHitResult(4.5);
+        // FIX: null-check hit before pattern matching - causes NPE when not looking at anything
+        if (hit == null) {
+            tickTimers();
+            return;
+        }
 
         // --- PLACER ---
         if (placer.getValue()) {
@@ -181,8 +189,8 @@ public final class AnchorMacro extends Module implements TickListener, ItemUseLi
                 if (exploderSwapTimer >= MathUtils.randomInt(swapDelay.getMinInt(), swapDelay.getMaxInt())
                         && clickTimer >= MathUtils.randomInt(clickDelay.getMinInt(), clickDelay.getMaxInt())) {
 
-                    // Switch to designated explode slot (e.g. sword/safe item)
-                    int slot = explodeSlot.getValueInt() - 1;
+                    // FIX: clamp slot to valid range 0-8 to prevent ArrayIndexOutOfBoundsException
+                    int slot = Math.max(0, Math.min(8, explodeSlot.getValueInt() - 1));
                     InventoryUtils.setInvSlot(slot);
 
                     if (safeExplode.getValue()) {
@@ -195,9 +203,10 @@ public final class AnchorMacro extends Module implements TickListener, ItemUseLi
                     if (clickSimulation.getValue())
                         MouseSimulation.mouseClick(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
-                    // Send interact packet directly for reliability
-                    mc.getNetworkHandler().sendPacket(
-                            new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND, blockHit, 0));
+                    // FIX: guard networkHandler before sending packet
+                    if (mc.getNetworkHandler() != null)
+                        mc.getNetworkHandler().sendPacket(
+                                new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND, blockHit, 0));
 
                     exploderSwapTimer = 0;
                     clickTimer        = 0;
@@ -231,7 +240,7 @@ public final class AnchorMacro extends Module implements TickListener, ItemUseLi
         chargerSwapTimer++;
         exploderSwapTimer++;
         clickTimer++;
-        if (sneaking) sneakTimer++;
+        // FIX: sneakTimer is managed only in onTick() — removed duplicate increment that caused double-speed sneak release
     }
 
     private void resetTimers() {

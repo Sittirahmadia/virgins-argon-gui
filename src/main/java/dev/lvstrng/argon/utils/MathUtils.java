@@ -10,6 +10,7 @@ public final class MathUtils {
 	}
 
 	public static int randomInt(int start, int bound) {
+		if (start >= bound) return start;
 		return random.nextInt(start, bound);
 	}
 

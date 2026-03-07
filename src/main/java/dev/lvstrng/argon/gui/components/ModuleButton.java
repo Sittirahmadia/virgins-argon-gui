@@ -25,7 +25,7 @@ public final class ModuleButton {
 	public boolean extended;
 	public int settingOffset;
 	public Color currentColor;
-	public Color defaultColor = Color.WHITE;
+	public Color defaultColor = new Color(200, 200, 205);
 	public Color currentAlpha;
 	public AnimationUtils animation = new AnimationUtils(0);
 
@@ -37,189 +37,171 @@ public final class ModuleButton {
 
 		settingOffset = parent.getHeight();
 		for (Setting<?> setting : module.getSettings()) {
-			if (setting instanceof BooleanSetting booleanSetting)
-				settings.add(new CheckBox(this, booleanSetting, settingOffset));
-			else if (setting instanceof NumberSetting numberSetting)
-				settings.add(new Slider(this, numberSetting, settingOffset));
-			else if (setting instanceof ModeSetting<?> modeSetting)
-				settings.add(new ModeBox(this, modeSetting, settingOffset));
-			else if (setting instanceof KeybindSetting keybindSetting)
-				settings.add(new KeybindBox(this, keybindSetting, settingOffset));
-			else if (setting instanceof StringSetting stringSetting)
-				settings.add(new StringBox(this, stringSetting, settingOffset));
-			else if (setting instanceof MinMaxSetting minMaxSetting)
-				settings.add(new MinMaxSlider(this, minMaxSetting, settingOffset));
-
+			if (setting instanceof BooleanSetting s)       settings.add(new CheckBox(this, s, settingOffset));
+			else if (setting instanceof NumberSetting s)   settings.add(new Slider(this, s, settingOffset));
+			else if (setting instanceof ModeSetting<?> s)  settings.add(new ModeBox(this, s, settingOffset));
+			else if (setting instanceof KeybindSetting s)  settings.add(new KeybindBox(this, s, settingOffset));
+			else if (setting instanceof StringSetting s)   settings.add(new StringBox(this, s, settingOffset));
+			else if (setting instanceof MinMaxSetting s)   settings.add(new MinMaxSlider(this, s, settingOffset));
 			settingOffset += parent.getHeight();
 		}
 	}
 
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-		if (parent.getY() + offset > MinecraftClient.getInstance().getWindow().getHeight())
-			return;
+		if (parent.getY() + offset > MinecraftClient.getInstance().getWindow().getHeight()) return;
 
-		for (RenderableSetting renderableSetting : settings)
-			renderableSetting.onUpdate();
+		for (RenderableSetting rs : settings) rs.onUpdate();
 
-		if (currentColor == null)
-			currentColor = new Color(0, 0, 0, 0);
-		else currentColor = new Color(0, 0, 0, currentColor.getAlpha());
+		// Row bg color
+		if (currentColor == null) currentColor = new Color(14, 14, 17, 0);
+		else currentColor = new Color(14, 14, 17, currentColor.getAlpha());
+		currentColor = ColorUtils.smoothAlphaTransition(0.05F, 155, currentColor);
 
-		int toAlpha = 170;
+		int idx = Argon.INSTANCE.getModuleManager().getModulesInCategory(module.getCategory()).indexOf(module);
+		Color targetNameColor = module.isEnabled() ? Utils.getMainColor(255, idx) : new Color(195, 195, 200);
+		if (!defaultColor.equals(targetNameColor))
+			defaultColor = ColorUtils.smoothColorTransition(0.1F, targetNameColor, defaultColor);
 
-		currentColor = ColorUtils.smoothAlphaTransition(0.05F, toAlpha, currentColor);
+		boolean isLast = parent.moduleButtons.get(parent.moduleButtons.size() - 1) == this;
+		int r = ClickGUI.roundQuads.getValueInt();
 
-		Color toColor = module.isEnabled() ? Utils.getMainColor(255, Argon.INSTANCE.getModuleManager().getModulesInCategory(module.getCategory()).indexOf(module)) : Color.WHITE;
-
-		if (defaultColor != toColor)
-			defaultColor = ColorUtils.smoothColorTransition(0.1F, toColor, defaultColor);
-
-		if (parent.moduleButtons.get(parent.moduleButtons.size() - 1) != this) {
-			context.fill(parent.getX(), parent.getY() + offset, parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset, currentColor.getRGB());
-			context.fillGradient(parent.getX(), parent.getY() + offset, parent.getX() + 2, parent.getY() + parent.getHeight() + offset, Utils.getMainColor(255, Argon.INSTANCE.getModuleManager().getModulesInCategory(module.getCategory()).indexOf(module)).getRGB(), Utils.getMainColor(255, Argon.INSTANCE.getModuleManager().getModulesInCategory(module.getCategory()).indexOf(module) + 1).getRGB());
+		if (!isLast) {
+			context.fill(parent.getX(), parent.getY() + offset,
+					parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
+					currentColor.getRGB());
 		} else {
-			RenderUtils.renderRoundedQuad(context.getMatrices(), currentColor, parent.getX(), parent.getY() + offset, parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset, 0, 0, 3, animation.getValue() > 30 ? 0 : ClickGUI.roundQuads.getValueInt(), 50);
-			RenderUtils.renderRoundedQuad(context.getMatrices(), Utils.getMainColor(255, Argon.INSTANCE.getModuleManager().getModulesInCategory(module.getCategory()).indexOf(module)), parent.getX(), parent.getY() + offset, parent.getX() + 2, parent.getY() + (parent.getHeight() - 1) + offset, 0, 0, extended ? 0 : 2, 0, 50);
+			RenderUtils.renderRoundedQuad(context.getMatrices(), currentColor,
+					parent.getX(), parent.getY() + offset,
+					parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
+					0, 0, animation.getValue() > 30 ? 0 : r, animation.getValue() > 30 ? 0 : r, 50);
 		}
 
-		CharSequence nameChars = module.getName();
+		// Left accent bar — always rendered, full opacity if enabled, dim if disabled
+		int barAlpha = module.isEnabled() ? 255 : 55;
+		context.fillGradient(
+				parent.getX(),     parent.getY() + offset + 4,
+				parent.getX() + 2, parent.getY() + offset + parent.getHeight() - 4,
+				Utils.getMainColor(barAlpha, idx).getRGB(),
+				Utils.getMainColor(barAlpha, idx + 1).getRGB());
 
-		int totalWidth = TextRenderer.getWidth(nameChars);
+		// Module name
+		int nameW = TextRenderer.getWidth(module.getName());
+		TextRenderer.drawString(module.getName(), context,
+				parent.getX() + parent.getWidth() / 2 - nameW / 2,
+				parent.getY() + offset + parent.getHeight() / 2 + 3,
+				defaultColor.getRGB());
 
-		int parentCenterX = parent.getX() + parent.getWidth() / 2;
-		int textCenterX = parentCenterX - totalWidth / 2;
-
-		TextRenderer.drawString(nameChars, context, textCenterX, parent.getY() + offset + 8, defaultColor.getRGB());
-
-		renderHover(context, mouseX, mouseY, delta);
+		renderHover(context, mouseX, mouseY);
 		renderSettings(context, mouseX, mouseY, delta);
 
-		for(RenderableSetting renderableSetting : settings)
-			if(extended) renderableSetting.renderDescription(context, mouseX, mouseY, delta);
+		if (extended)
+			for (RenderableSetting rs : settings)
+				rs.renderDescription(context, mouseX, mouseY, delta);
 
-		if (isHovered(mouseX, mouseY) && !parent.dragging) {
-			CharSequence chars = module.getDescription();
+		// Description tooltip
+		if (isHovered(mouseX, mouseY) && !parent.dragging && module.getDescription() != null) {
+			CharSequence desc = module.getDescription();
+			int tw = TextRenderer.getWidth(desc);
+			int cx = mc.getWindow().getFramebufferWidth() / 2;
+			int tx = cx - tw / 2;
+			int ty = mc.getWindow().getFramebufferHeight() / 2 + 302;
 
-			int tw = TextRenderer.getWidth(chars);
-
-			int parentCenter = mc.getWindow().getFramebufferWidth() / 2;
-			int textCenter = parentCenter - tw / 2;
-
-			RenderUtils.renderRoundedQuad(
-					context.getMatrices(),
-					new Color(100, 100, 100, 100),
-					textCenter - 5,
-					((double) mc.getWindow().getFramebufferHeight() / 2) + 294,
-					textCenter + tw + 5,
-					((double) mc.getWindow().getFramebufferHeight() / 2) + 318,
-					3,
-					10
-			);
-
-			TextRenderer.drawString(chars, context, textCenter, (mc.getWindow().getFramebufferHeight() / 2) + 300, Color.WHITE.getRGB());
+			RenderUtils.renderRoundedQuad(context.getMatrices(), new Color(14, 14, 17, 210),
+					tx - 7, ty - 11, tx + tw + 7, ty + 13, 3, 3, 3, 3, 10);
+			// Accent top line on tooltip
+			Color tc = Utils.getMainColor(180, idx);
+			context.fillGradient(tx - 7, ty - 11, tx + tw + 7, ty - 10,
+					tc.getRGB(), Utils.getMainColor(180, idx + 1).getRGB());
+			TextRenderer.drawString(desc, context, tx, ty, new Color(185, 185, 190).getRGB());
 		}
 	}
 
-	private void renderHover(DrawContext context, int mouseX, int mouseY, float delta) {
-		if (!parent.dragging) {
-			int toHoverAlpha = isHovered(mouseX, mouseY) ? 15 : 0;
-
-			if (currentAlpha == null)
-				currentAlpha = new Color(255, 255, 255, toHoverAlpha);
-			else currentAlpha = new Color(255, 255, 255, currentAlpha.getAlpha());
-
-			if (currentAlpha.getAlpha() != toHoverAlpha)
-				currentAlpha = ColorUtils.smoothAlphaTransition(0.05F, toHoverAlpha, currentAlpha);
-
-			context.fill(parent.getX(), parent.getY() + offset, parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset, currentAlpha.getRGB());
-		}
+	private void renderHover(DrawContext context, int mouseX, int mouseY) {
+		if (parent.dragging) return;
+		int toA = isHovered(mouseX, mouseY) ? 18 : 0;
+		if (currentAlpha == null) currentAlpha = new Color(255, 255, 255, toA);
+		else currentAlpha = new Color(255, 255, 255, currentAlpha.getAlpha());
+		if (currentAlpha.getAlpha() != toA)
+			currentAlpha = ColorUtils.smoothAlphaTransition(0.05F, toA, currentAlpha);
+		context.fill(parent.getX(), parent.getY() + offset,
+				parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
+				currentAlpha.getRGB());
 	}
 
 	private void renderSettings(DrawContext context, int mouseX, int mouseY, float delta) {
-		int scissorX = parent.getX();
-		int scissorY = (int) (mc.getWindow().getHeight() - (parent.getY() + offset + animation.getValue()));
-		int scissorWidth = parent.getWidth();
-		int scissorHeight = (int) animation.getValue();
+		RenderSystem.enableScissor(
+				parent.getX(),
+				(int)(mc.getWindow().getHeight() - (parent.getY() + offset + animation.getValue())),
+				parent.getWidth(),
+				(int) animation.getValue());
 
-		RenderSystem.enableScissor(scissorX, scissorY, scissorWidth, scissorHeight);
+		if (animation.getValue() > parent.getHeight()) {
+			for (RenderableSetting rs : settings)
+				rs.render(context, mouseX, mouseY, delta);
 
-		for (RenderableSetting renderableSetting : settings)
-			if(animation.getValue() > parent.getHeight())
-				renderableSetting.render(context, mouseX, mouseY, delta);
-
-		for (RenderableSetting renderableSetting : settings) {
-			if(animation.getValue() > parent.getHeight()) {
-				if (renderableSetting instanceof Slider slider) {
-					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170), (slider.parentX() + (Math.max(slider.lerpedOffsetX, 2.5))), slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
-					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(), (slider.parentX() + (Math.max(slider.lerpedOffsetX, 2.5))) , slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
-
-				} else if (renderableSetting instanceof MinMaxSlider slider) {
-					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170), (slider.parentX() + (Math.max(slider.lerpedOffsetMinX, 2.5))), slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
-					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(), (slider.parentX() + (Math.max(slider.lerpedOffsetMinX, 2.5))), slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
-
-					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170), (slider.parentX() + (Math.max(slider.lerpedOffsetMaxX, 2.5))), slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
-					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(), (slider.parentX() + (Math.max(slider.lerpedOffsetMaxX, 2.5))), slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
+			for (RenderableSetting rs : settings) {
+				if (rs instanceof Slider slider) {
+					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170),
+							slider.parentX() + Math.max(slider.lerpedOffsetX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
+					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(),
+							slider.parentX() + Math.max(slider.lerpedOffsetX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
+				} else if (rs instanceof MinMaxSlider slider) {
+					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170),
+							slider.parentX() + Math.max(slider.lerpedOffsetMinX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
+					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(),
+							slider.parentX() + Math.max(slider.lerpedOffsetMinX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
+					RenderUtils.renderCircle(context.getMatrices(), new Color(0, 0, 0, 170),
+							slider.parentX() + Math.max(slider.lerpedOffsetMaxX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 6, 15);
+					RenderUtils.renderCircle(context.getMatrices(), slider.currentColor1.brighter(),
+							slider.parentX() + Math.max(slider.lerpedOffsetMaxX, 2.5),
+							slider.parentY() + slider.offset + slider.parentOffset() + 27.5, 5, 15);
 				}
 			}
 		}
-
 		RenderSystem.disableScissor();
 	}
 
 	public void onExtend() {
-		for(ModuleButton moduleButton : parent.moduleButtons) {
-			moduleButton.extended = false;
-		}
+		for (ModuleButton mb : parent.moduleButtons) mb.extended = false;
 	}
 
 	public void keyPressed(int keyCode, int scanCode, int modifiers) {
-		for (RenderableSetting setting : settings)
-			setting.keyPressed(keyCode, scanCode, modifiers);
+		for (RenderableSetting rs : settings) rs.keyPressed(keyCode, scanCode, modifiers);
 	}
 
-	public void mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public void mouseDragged(double mouseX, double mouseY, int button, double dX, double dY) {
 		if (extended)
-			for (RenderableSetting renderableSetting : settings)
-				renderableSetting.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+			for (RenderableSetting rs : settings) rs.mouseDragged(mouseX, mouseY, button, dX, dY);
 	}
 
 	public void mouseClicked(double mouseX, double mouseY, int button) {
 		if (isHovered(mouseX, mouseY)) {
-			if (button == 0)
-				module.toggle();
-
-			if (button == 1) {
-				if (module.getSettings().isEmpty()) return;
-				if (!extended)
-					onExtend();
-
+			if (button == 0) module.toggle();
+			if (button == 1 && !module.getSettings().isEmpty()) {
+				if (!extended) onExtend();
 				extended = !extended;
 			}
 		}
-		if (extended) {
-			for (RenderableSetting renderableSetting : settings) {
-				renderableSetting.mouseClicked(mouseX, mouseY, button);
-			}
-		}
+		if (extended)
+			for (RenderableSetting rs : settings) rs.mouseClicked(mouseX, mouseY, button);
 	}
 
 	public void onGuiClose() {
-		this.currentAlpha = null;
-		this.currentColor = null;
-
-		for (RenderableSetting renderableSetting : settings)
-			renderableSetting.onGuiClose();
+		currentAlpha = null; currentColor = null;
+		for (RenderableSetting rs : settings) rs.onGuiClose();
 	}
 
 	public void mouseReleased(double mouseX, double mouseY, int button) {
-		for (RenderableSetting renderableSetting : settings)
-			renderableSetting.mouseReleased(mouseX, mouseY, button);
+		for (RenderableSetting rs : settings) rs.mouseReleased(mouseX, mouseY, button);
 	}
 
-	public boolean isHovered(double mouseX, double mouseY) {
-		return mouseX > parent.getX()
-				&& mouseX < parent.getX() + parent.getWidth()
-				&& mouseY > parent.getY() + offset
-				&& mouseY < parent.getY() + offset + parent.getHeight();
+	public boolean isHovered(double mx, double my) {
+		return mx > parent.getX() && mx < parent.getX() + parent.getWidth()
+				&& my > parent.getY() + offset && my < parent.getY() + offset + parent.getHeight();
 	}
 }
