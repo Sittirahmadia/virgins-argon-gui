@@ -1,6 +1,7 @@
 plugins {
     id 'fabric-loom' version '1.6-SNAPSHOT'
     id 'maven-publish'
+    id 'com.guardsquare.proguard' version '7.5.0'
 }
 
 version = project.mod_version
@@ -71,6 +72,21 @@ jar {
 
     // Avoid duplicating META-INF files when merging libraries
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+
+tasks.register('obfuscateJar', proguard.gradle.ProGuardTask) {
+    dependsOn remapJar
+    group = 'build'
+    description = 'Builds an aggressively renamed obfuscated release jar with class-string/resource adaptation.'
+
+    configuration file('proguard-rules.pro')
+    injars remapJar.archiveFile
+    outjars layout.buildDirectory.file("libs/${archivesBaseName}-${version}-obf.jar")
+
+    libraryjars files(configurations.minecraftNamed)
+    libraryjars files(configurations.modImplementation)
+    libraryjars files(System.getProperty('java.home') + '/jmods/java.base.jmod')
 }
 
 publishing {
