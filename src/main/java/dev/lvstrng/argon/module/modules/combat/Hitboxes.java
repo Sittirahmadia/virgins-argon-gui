@@ -97,7 +97,7 @@ public final class Hitboxes extends Module implements TickListener, MovementPack
     @Override public void onSendMovementPackets() {
         if (!canRun() || !fakeRotation.getValue() || blockPlacePauseTicks > 0 || serverRotation == null) return;
         if (rotationMode.isMode(RotationMode.Silent) || rotationMode.isMode(RotationMode.Combined)) {
-            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround((float) serverRotation.yaw(), (float) serverRotation.pitch(), mc.player.isOnGround(), mc.player.horizontalCollision));
+            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround((float) serverRotation.yaw(), (float) serverRotation.pitch(), mc.player.isOnGround()));
         }
     }
 

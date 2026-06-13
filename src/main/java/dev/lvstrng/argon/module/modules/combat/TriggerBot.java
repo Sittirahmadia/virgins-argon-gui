@@ -15,6 +15,7 @@ import dev.lvstrng.argon.utils.MathUtils;
 import dev.lvstrng.argon.utils.RenderUtils;
 import dev.lvstrng.argon.utils.RotationUtils;
 import dev.lvstrng.argon.utils.TimerUtils;
+import java.util.stream.StreamSupport;
 import dev.lvstrng.argon.utils.WorldUtils;
 import dev.lvstrng.argon.utils.rotation.Rotation;
 import net.minecraft.entity.Entity;
@@ -154,7 +155,7 @@ public final class TriggerBot extends Module implements TickListener, AttackList
             case Angle, Crosshair -> Comparator.comparingDouble(this::angleTo);
             case Nearest -> Comparator.comparingDouble(e -> mc.player.squaredDistanceTo(e));
         };
-        return mc.world.getEntities().stream()
+        return StreamSupport.stream(mc.world.getEntities().spliterator(), false)
                 .filter(entity -> entity instanceof LivingEntity)
                 .map(entity -> (LivingEntity) entity)
                 .filter(this::isValidTarget)

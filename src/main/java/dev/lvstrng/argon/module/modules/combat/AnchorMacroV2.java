@@ -126,7 +126,7 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
     @Override public void onSendMovementPackets() {
         if (mc.player == null || serverRotation == null) return;
         if (rotations.isMode(RotationMode.Silent) || rotations.isMode(RotationMode.Hybrid)) {
-            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround((float) serverRotation.yaw(), (float) serverRotation.pitch(), mc.player.isOnGround(), mc.player.horizontalCollision));
+            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround((float) serverRotation.yaw(), (float) serverRotation.pitch(), mc.player.isOnGround()));
         }
     }
 
