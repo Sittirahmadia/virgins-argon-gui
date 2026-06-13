@@ -51,11 +51,11 @@ public final class Window {
 
 		updateButtons(delta);
 		for (ModuleButton mb : moduleButtons)
-			mb.render(context, mouseX, mouseY, delta);
+			if (parent.matchesSearch(mb.module)) mb.render(context, mouseX, mouseY, delta);
 	}
 
 	public void keyPressed(int keyCode, int scanCode, int modifiers) {
-		for (ModuleButton mb : moduleButtons) mb.keyPressed(keyCode, scanCode, modifiers);
+		for (ModuleButton mb : moduleButtons) if (parent.matchesSearch(mb.module)) mb.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	public void onGuiClose() {
@@ -71,17 +71,21 @@ public final class Window {
 
 	public void mouseClicked(double mouseX, double mouseY, int button) {
 		if (extended)
-			for (ModuleButton mb : moduleButtons) mb.mouseClicked(mouseX, mouseY, button);
+			for (ModuleButton mb : moduleButtons) if (parent.matchesSearch(mb.module)) mb.mouseClicked(mouseX, mouseY, button);
 	}
 
 	public void mouseDragged(double mouseX, double mouseY, int button, double dX, double dY) {
 		if (extended)
-			for (ModuleButton mb : moduleButtons) mb.mouseDragged(mouseX, mouseY, button, dX, dY);
+			for (ModuleButton mb : moduleButtons) if (parent.matchesSearch(mb.module)) mb.mouseDragged(mouseX, mouseY, button, dX, dY);
 	}
 
 	public void updateButtons(float delta) {
 		int offset = scrollOffset;
 		for (ModuleButton mb : moduleButtons) {
+			if (!parent.matchesSearch(mb.module)) {
+				mb.offset = -10000;
+				continue;
+			}
 			mb.animation.animate(0.5 * delta,
 					mb.extended ? height * (mb.settings.size() + 1) : height);
 			mb.offset = offset;
@@ -95,10 +99,13 @@ public final class Window {
 	}
 
 	public void mouseScrolled(double mouseX, double mouseY, double h, double v) {
-		int contentHeight = moduleButtons.size() * height;
-		for (ModuleButton mb : moduleButtons)
+		int contentHeight = 0;
+		for (ModuleButton mb : moduleButtons) {
+			if (!parent.matchesSearch(mb.module)) continue;
+			contentHeight += height + 8;
 			if (mb.extended) contentHeight += mb.settings.size() * height;
-		int maxScroll = Math.min(0, 350 - contentHeight);
+		}
+		int maxScroll = Math.min(0, parent.getContentHeight() - 130 - contentHeight);
 		scrollOffset = MathHelper.clamp((int)(scrollOffset + v * 24), maxScroll, 0);
 	}
 
