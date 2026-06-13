@@ -29,6 +29,7 @@ public final class ModuleManager implements ButtonListener {
 		add(new AutoCrystal());
 		add(new ClosetCrystal());
 		add(new AnchorMacro());
+		add(new AnchorMacroV2());
 		add(new AimAssist());
 		add(new Hitboxes());
 		add(new TriggerBot());
