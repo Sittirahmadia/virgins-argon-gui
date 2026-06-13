@@ -13,7 +13,9 @@ import dev.lvstrng.argon.utils.rotation.Rotation;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.AxeItem;
+import net.minecraft.item.MaceItem;
 import net.minecraft.item.SwordItem;
+import net.minecraft.item.TridentItem;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -24,6 +26,9 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 			.setDescription(EncryptedString.of("Aims at the last attacked player"));
 
 	private final BooleanSetting onlyWeapon = new BooleanSetting(EncryptedString.of("Only Weapon"), true);
+
+	private final BooleanSetting verticalOnly = new BooleanSetting(EncryptedString.of("Vertical Only"), false)
+			.setDescription(EncryptedString.of("Only adjusts pitch while leaving yaw untouched"));
 
 	private final BooleanSetting onLeftClick = new BooleanSetting(EncryptedString.of("On Left Click"), false)
 			.setDescription(EncryptedString.of("Only gets triggered if holding down left click"));
@@ -73,11 +78,11 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 	}
 
 	public enum AimMode {
-		Head, Chest, Legs
+		Head, Chest, Feet
 	}
 
 	public enum LerpMode {
-		Normal, Smoothstep, EaseOut
+		Normal, Smoothstep, EaseOut, Linear
 	}
 
 	public AimAssist() {
@@ -86,7 +91,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 				-1,
 				Category.COMBAT);
 
-		addSettings(stickyAim, onlyWeapon, onLeftClick, aimAt, stopAtTargetVertical, stopAtTargetHorizontal, radius, seeOnly, lookAtNearest, fov, pitchSpeed, yawSpeed, speedChange, randomization, yawAssist, pitchAssist, waitFor, lerp, posMode);
+		addSettings(stickyAim, onlyWeapon, verticalOnly, onLeftClick, aimAt, stopAtTargetVertical, stopAtTargetHorizontal, radius, seeOnly, lookAtNearest, fov, pitchSpeed, yawSpeed, speedChange, randomization, yawAssist, pitchAssist, waitFor, lerp, posMode);
 	}
 
 	@Override
@@ -119,7 +124,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 		if (mc.player == null || mc.currentScreen != null)
 			return;
 
-		if (onlyWeapon.getValue() && !(mc.player.getMainHandStack().getItem() instanceof SwordItem || mc.player.getMainHandStack().getItem() instanceof AxeItem))
+		if (onlyWeapon.getValue() && !(mc.player.getMainHandStack().getItem() instanceof SwordItem || mc.player.getMainHandStack().getItem() instanceof AxeItem || mc.player.getMainHandStack().getItem() instanceof TridentItem || mc.player.getMainHandStack().getItem() instanceof MaceItem))
 			return;
 
 		if (onLeftClick.getValue() && GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) != GLFW.GLFW_PRESS)
@@ -142,8 +147,8 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 
 		if (aimAt.isMode(AimMode.Chest))
 			targetPos = targetPos.add(0, -0.5, 0);
-		else if (aimAt.isMode(AimMode.Legs))
-			targetPos = targetPos.add(0, -1.2, 0);
+		else if (aimAt.isMode(AimMode.Feet))
+			targetPos = targetPos.add(0, -1.7, 0);
 
 		if (lookAtNearest.getValue()) {
 			double offsetX = mc.player.getX() - target.getX() > 0 ? 0.29 : -0.29;
@@ -178,9 +183,14 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 			pitch = (float) easeOutBackDegrees(mc.player.getPitch(), rotation.pitch(), pitchStrength * RenderTickCounter.ONE.getLastFrameDuration());
 		}
 
+		if (lerp.isMode(LerpMode.Linear)) {
+			yaw = linearStep(mc.player.getYaw(), (float) rotation.yaw(), yaw);
+			pitch = linearStep(mc.player.getPitch(), (float) rotation.pitch(), pitch);
+		}
+
 		if (MathUtils.randomInt(1, 100) <= randomization.getValueInt()) {
 			if (move) {
-				if (yawAssist.getValue()) {
+				if (yawAssist.getValue() && !verticalOnly.getValue()) {
 					if(stopAtTargetHorizontal.getValue() && WorldUtils.getHitResult(radius.getValue()) instanceof EntityHitResult hitResult && hitResult.getEntity() == target)
 						return;
 
@@ -195,6 +205,12 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 				}
 			}
 		}
+	}
+
+	public float linearStep(float start, float end, float current) {
+		float delta = MathHelper.wrapDegrees(end - start);
+		float step = Math.copySign(Math.min(Math.abs(delta), Math.abs(current - start)), delta);
+		return start + step;
 	}
 
 	public float lerp(float delta, float start, float end) {

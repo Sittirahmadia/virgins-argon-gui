@@ -73,6 +73,135 @@ jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+
+
+def obfuscationAlphabet = { int index ->
+    def alphabet = ('a'..'z').join()
+    def value = index
+    def name = new StringBuilder()
+    do {
+        name.append(alphabet.charAt(value % alphabet.length()))
+        value = (int) (value / alphabet.length()) - 1
+    } while (value >= 0)
+    name.toString()
+}
+
+def readUnsignedShort = { byte[] data, int offset ->
+    ((data[offset] & 0xff) << 8) | (data[offset + 1] & 0xff)
+}
+
+def writeUnsignedShort = { java.io.ByteArrayOutputStream out, int value ->
+    out.write((value >>> 8) & 0xff)
+    out.write(value & 0xff)
+}
+
+def remapClassConstants = { byte[] data, Map<String, String> classMap, Map<String, String> memberMap ->
+    if (data.length < 10 || data[0] != (byte) 0xCA || data[1] != (byte) 0xFE || data[2] != (byte) 0xBA || data[3] != (byte) 0xBE) return data
+
+    def out = new java.io.ByteArrayOutputStream(data.length + 256)
+    out.write(data, 0, 8)
+    int cpCount = readUnsignedShort(data, 8)
+    writeUnsignedShort(out, cpCount)
+    int offset = 10
+
+    for (int i = 1; i < cpCount; i++) {
+        int tag = data[offset++] & 0xff
+        out.write(tag)
+        switch (tag) {
+            case 1: // Utf8
+                int len = readUnsignedShort(data, offset)
+                offset += 2
+                String value = new String(data, offset, len, java.nio.charset.StandardCharsets.UTF_8)
+                String remapped = classMap.getOrDefault(value, memberMap.getOrDefault(value, value))
+                byte[] encoded = remapped.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                writeUnsignedShort(out, encoded.length)
+                out.write(encoded)
+                offset += len
+                break
+            case 3: case 4: // Integer / Float
+                out.write(data, offset, 4); offset += 4; break
+            case 5: case 6: // Long / Double
+                out.write(data, offset, 8); offset += 8; i++; break
+            case 7: case 8: case 16: case 19: case 20: // Class / String / MethodType / Module / Package
+                out.write(data, offset, 2); offset += 2; break
+            case 9: case 10: case 11: case 12: case 17: case 18: // refs / NameAndType / Dynamic / InvokeDynamic
+                out.write(data, offset, 4); offset += 4; break
+            case 15: // MethodHandle
+                out.write(data, offset, 3); offset += 3; break
+            default:
+                throw new GradleException("Unsupported constant-pool tag ${tag}")
+        }
+    }
+
+    out.write(data, offset, data.length - offset)
+    out.toByteArray()
+}
+
+tasks.register('obfuscateJar') {
+    dependsOn remapJar
+    group = 'build'
+    description = 'Builds a self-contained obfuscated release jar without third-party obfuscator plugins.'
+
+    doLast {
+        def inputJar = remapJar.archiveFile.get().asFile
+        def outputJar = layout.buildDirectory.file("libs/${archivesBaseName}-${version}-obf.jar").get().asFile
+        outputJar.parentFile.mkdirs()
+
+        def entries = new LinkedHashMap<String, byte[]>()
+        new java.util.zip.ZipInputStream(new java.io.BufferedInputStream(new java.io.FileInputStream(inputJar))).withCloseable { zip ->
+            java.util.zip.ZipEntry entry
+            while ((entry = zip.nextEntry) != null) {
+                if (!entry.directory) entries[entry.name] = zip.readAllBytes()
+            }
+        }
+
+        def protectedClasses = [
+                'dev/lvstrng/argon/Argon',
+                'dev/lvstrng/argon/ArgonClient'
+        ] as Set
+
+        def classNames = entries.keySet()
+                .findAll { it.endsWith('.class') }
+                .collect { it.substring(0, it.length() - 6) }
+                .findAll { it.startsWith('dev/lvstrng/argon/') && !it.startsWith('dev/lvstrng/argon/mixin/') && !protectedClasses.contains(it) }
+                .sort()
+
+        def classMap = new LinkedHashMap<String, String>()
+        classNames.eachWithIndex { name, index -> classMap[name] = "x/${obfuscationAlphabet(index)}" }
+
+        // This in-house remapper intentionally keeps member names stable. Rewriting
+        // method/field UTF-8 constants safely requires owner-aware constant-pool
+        // rebuilding; doing a blind global rename can corrupt calls into Minecraft,
+        // Fabric, LWJGL, or the JDK when names overlap. Class/package names and
+        // resource references are still remapped below without external tools.
+        def memberMap = [:]
+
+        new java.util.zip.ZipOutputStream(new java.io.BufferedOutputStream(new java.io.FileOutputStream(outputJar))).withCloseable { zip ->
+            entries.each { name, bytes ->
+                def outName = name
+                def outBytes = bytes
+                if (name.endsWith('.class')) {
+                    def internalName = name.substring(0, name.length() - 6)
+                    outName = (classMap[internalName] ?: internalName) + '.class'
+                    outBytes = remapClassConstants(bytes, classMap, memberMap)
+                } else if (name.endsWith('.json')) {
+                    def text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+                    classMap.each { from, to -> text = text.replace(from.replace('/', '.'), to.replace('/', '.')).replace(from, to) }
+                    outBytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                }
+                zip.putNextEntry(new java.util.zip.ZipEntry(outName))
+                zip.write(outBytes)
+                zip.closeEntry()
+            }
+        }
+
+        def mappingFile = layout.buildDirectory.file('obfuscation/mapping.txt').get().asFile
+        mappingFile.parentFile.mkdirs()
+        mappingFile.text = (classMap.collect { k, v -> "${k} -> ${v}" } + memberMap.collect { k, v -> "${k} -> ${v}" }).join('\n') + '\n'
+        logger.lifecycle("Obfuscated ${classMap.size()} classes into ${outputJar}")
+    }
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {

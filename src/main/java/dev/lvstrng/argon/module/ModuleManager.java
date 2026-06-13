@@ -32,6 +32,7 @@ public final class ModuleManager implements ButtonListener {
 		add(new AimAssist());
 		add(new Hitboxes());
 		add(new TriggerBot());
+		add(new AutoMace());
 		add(new MaceSwap());
 		add(new AutoDoubleHand());
 		add(new AutoHitCrystal());
