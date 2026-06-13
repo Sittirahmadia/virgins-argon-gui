@@ -12,8 +12,7 @@ import dev.lvstrng.argon.utils.*;
 import dev.lvstrng.argon.utils.rotation.Rotation;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.AxeItem;
-import net.minecraft.item.SwordItem;
+import net.minecraft.item.*;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -28,6 +27,9 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 	private final BooleanSetting onLeftClick = new BooleanSetting(EncryptedString.of("On Left Click"), false)
 			.setDescription(EncryptedString.of("Only gets triggered if holding down left click"));
 	private final ModeSetting<AimMode> aimAt = new ModeSetting<>(EncryptedString.of("Aim At"), AimMode.Head, AimMode.class);
+
+	private final BooleanSetting verticalOnly = new BooleanSetting(EncryptedString.of("Vertical Only"), false)
+			.setDescription(EncryptedString.of("Only adjusts pitch while preserving your horizontal aim"));
 
 	private final BooleanSetting stopAtTargetVertical = new BooleanSetting(EncryptedString.of("Stop at Target Vert"), true)
 			.setDescription(EncryptedString.of("Stops vertically assisting if already aiming at the entity, helps bypass anti-cheat"));
@@ -56,7 +58,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 	private final NumberSetting waitFor = new NumberSetting(EncryptedString.of("Wait on Move"), 0, 1000, 0, 1)
 			.setDescription(EncryptedString.of("After you move your mouse aim assist will stop working for the selected amount of time"));
 
-	private final ModeSetting<LerpMode> lerp = new ModeSetting<>(EncryptedString.of("Lerp"), LerpMode.Normal, LerpMode.class)
+	private final ModeSetting<LerpMode> lerp = new ModeSetting<>(EncryptedString.of("Lerp"), LerpMode.Linear, LerpMode.class)
 			.setDescription(EncryptedString.of("Linear interpolation to use to rotate"));
 
 	private final ModeSetting<PosMode> posMode = new ModeSetting<>(EncryptedString.of("Pos mode"), PosMode.Normal, PosMode.class)
@@ -73,11 +75,11 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 	}
 
 	public enum AimMode {
-		Head, Chest, Legs
+		Head, Chest, Feet
 	}
 
 	public enum LerpMode {
-		Normal, Smoothstep, EaseOut
+		Linear, Smooth, EaseOut
 	}
 
 	public AimAssist() {
@@ -86,7 +88,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 				-1,
 				Category.COMBAT);
 
-		addSettings(stickyAim, onlyWeapon, onLeftClick, aimAt, stopAtTargetVertical, stopAtTargetHorizontal, radius, seeOnly, lookAtNearest, fov, pitchSpeed, yawSpeed, speedChange, randomization, yawAssist, pitchAssist, waitFor, lerp, posMode);
+		addSettings(stickyAim, onlyWeapon, onLeftClick, aimAt, verticalOnly, stopAtTargetVertical, stopAtTargetHorizontal, radius, seeOnly, lookAtNearest, fov, pitchSpeed, yawSpeed, speedChange, randomization, yawAssist, pitchAssist, waitFor, lerp, posMode);
 	}
 
 	@Override
@@ -119,7 +121,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 		if (mc.player == null || mc.currentScreen != null)
 			return;
 
-		if (onlyWeapon.getValue() && !(mc.player.getMainHandStack().getItem() instanceof SwordItem || mc.player.getMainHandStack().getItem() instanceof AxeItem))
+		if (onlyWeapon.getValue() && !isHoldingWeapon())
 			return;
 
 		if (onLeftClick.getValue() && GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) != GLFW.GLFW_PRESS)
@@ -142,7 +144,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 
 		if (aimAt.isMode(AimMode.Chest))
 			targetPos = targetPos.add(0, -0.5, 0);
-		else if (aimAt.isMode(AimMode.Legs))
+		else if (aimAt.isMode(AimMode.Feet))
 			targetPos = targetPos.add(0, -1.2, 0);
 
 		if (lookAtNearest.getValue()) {
@@ -163,12 +165,12 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 		float yaw = mc.player.getYaw();
 		float pitch = mc.player.getPitch();
 
-		if (lerp.isMode(LerpMode.Smoothstep)) {
+		if (lerp.isMode(LerpMode.Smooth)) {
 			yaw = (float) smoothStepLerp(yawStrength, mc.player.getYaw(), (float) rotation.yaw());
 			pitch = (float) smoothStepLerp(pitchStrength, mc.player.getPitch(), (float) rotation.pitch());
 		}
 
-		if (lerp.isMode(LerpMode.Normal)) {
+		if (lerp.isMode(LerpMode.Linear)) {
 			yaw = lerp(yawStrength, mc.player.getYaw(), (float) (rotation.yaw()));
 			pitch = lerp(pitchStrength, mc.player.getPitch(), (float) (rotation.pitch()));
 		}
@@ -180,7 +182,7 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 
 		if (MathUtils.randomInt(1, 100) <= randomization.getValueInt()) {
 			if (move) {
-				if (yawAssist.getValue()) {
+				if (yawAssist.getValue() && !verticalOnly.getValue()) {
 					if(stopAtTargetHorizontal.getValue() && WorldUtils.getHitResult(radius.getValue()) instanceof EntityHitResult hitResult && hitResult.getEntity() == target)
 						return;
 
@@ -217,6 +219,11 @@ public final class AimAssist extends Module implements HudListener, MouseMoveLis
 
 		value = start + MathHelper.wrapDegrees(end - start) * t;
 		return value;
+	}
+
+	private boolean isHoldingWeapon() {
+		Item item = mc.player.getMainHandStack().getItem();
+		return item instanceof SwordItem || item instanceof AxeItem || item instanceof MaceItem || item instanceof TridentItem;
 	}
 
 	@Override

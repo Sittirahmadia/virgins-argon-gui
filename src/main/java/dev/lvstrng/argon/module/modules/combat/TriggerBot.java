@@ -8,40 +8,42 @@ import dev.lvstrng.argon.module.setting.BooleanSetting;
 import dev.lvstrng.argon.module.setting.MinMaxSetting;
 import dev.lvstrng.argon.module.setting.ModeSetting;
 import dev.lvstrng.argon.module.setting.NumberSetting;
-import dev.lvstrng.argon.utils.EncryptedString;
-import dev.lvstrng.argon.utils.MathUtils;
-import dev.lvstrng.argon.utils.TimerUtils;
-import dev.lvstrng.argon.utils.WorldUtils;
+import dev.lvstrng.argon.utils.*;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.AxeItem;
-import net.minecraft.item.Items;
-import net.minecraft.item.MaceItem;
-import net.minecraft.item.SwordItem;
-import net.minecraft.item.TridentItem;
+import net.minecraft.item.*;
 import net.minecraft.util.hit.EntityHitResult;
 import org.lwjgl.glfw.GLFW;
 
 public final class TriggerBot extends Module implements TickListener, AttackListener {
 
-    private final ModeSetting<AttackMode> attackMode = new ModeSetting<>(
-            EncryptedString.of("Attack Mode"), AttackMode.Cooldown, AttackMode.class)
-            .setDescription(EncryptedString.of("Cooldown waits for full cooldown, Delay uses a timer"));
+    private final ModeSetting<ActivationMode> activationMode = new ModeSetting<>(
+            EncryptedString.of("Mode"), ActivationMode.Hold, ActivationMode.class)
+            .setDescription(EncryptedString.of("Hold requires mouse, Toggle flips on click, Always runs when valid"));
 
     private final MinMaxSetting attackDelay = new MinMaxSetting(
-            EncryptedString.of("Attack Delay"), 0, 500, 1, 10, 25);
+            EncryptedString.of("Delay Randomizer"), 0, 500, 1, 45, 95)
+            .setDescription(EncryptedString.of("Combined cooldown/random delay range in milliseconds"));
 
     private final NumberSetting cooldown = new NumberSetting(
-            EncryptedString.of("Cooldown %"), 0, 100, 95, 1)
-            .setDescription(EncryptedString.of("Attack when cooldown reaches this percentage"));
+            EncryptedString.of("Cooldown %"), 0, 100, 92, 1)
+            .setDescription(EncryptedString.of("Minimum vanilla attack cooldown percentage"));
 
     private final BooleanSetting holdingWeapon = new BooleanSetting(
-            EncryptedString.of("Only Weapon"), false)
-            .setDescription(EncryptedString.of("Only triggers when holding a sword, axe, trident or mace"));
+            EncryptedString.of("Only Weapon"), true)
+            .setDescription(EncryptedString.of("Only triggers when holding a sword, axe, mace or trident"));
 
-    private final BooleanSetting requireClick = new BooleanSetting(
-            EncryptedString.of("Require Click"), false)
-            .setDescription(EncryptedString.of("Only triggers when holding left click"));
+    private final BooleanSetting priorityCrits = new BooleanSetting(
+            EncryptedString.of("Priority Crits"), true)
+            .setDescription(EncryptedString.of("Waits for perfect crit windows when falling"));
+
+    private final BooleanSetting inputSimulation = new BooleanSetting(
+            EncryptedString.of("Input Simulation"), true)
+            .setDescription(EncryptedString.of("Adds realistic CPS click simulation and jitter before attacking"));
+
+    private final NumberSetting jitter = new NumberSetting(
+            EncryptedString.of("Jitter"), 0, 50, 12, 1)
+            .setDescription(EncryptedString.of("Extra random input jitter in milliseconds"));
 
     private final BooleanSetting ignoreShield = new BooleanSetting(
             EncryptedString.of("Ignore Shield"), false)
@@ -50,24 +52,27 @@ public final class TriggerBot extends Module implements TickListener, AttackList
     private final ModeSetting<TargetMode> targetMode = new ModeSetting<>(
             EncryptedString.of("Target"), TargetMode.Player, TargetMode.class);
 
-    public enum AttackMode { Cooldown, Delay }
+    public enum ActivationMode { Hold, Toggle, Always }
     public enum TargetMode { Player, All }
 
     private final TimerUtils hitTimer = new TimerUtils();
-    private boolean attackedThisTick;
+    private boolean toggleActive;
+    private boolean lastMouseDown;
+    private int nextDelay;
 
     public TriggerBot() {
         super(EncryptedString.of("Trigger Bot"),
-                EncryptedString.of("Automatically attacks enemies in your crosshair"),
+                EncryptedString.of("Weapon-only triggerbot with crit priority, random cooldowns and input simulation"),
                 -1,
                 Category.COMBAT);
-        addSettings(attackMode, attackDelay, cooldown, holdingWeapon, requireClick, ignoreShield, targetMode);
+        addSettings(activationMode, attackDelay, cooldown, holdingWeapon, priorityCrits, inputSimulation, jitter, ignoreShield, targetMode);
     }
 
     @Override
     public void onEnable() {
         eventManager.add(TickListener.class, this);
         eventManager.add(AttackListener.class, this);
+        nextDelay = randomDelay();
         super.onEnable();
     }
 
@@ -75,51 +80,63 @@ public final class TriggerBot extends Module implements TickListener, AttackList
     public void onDisable() {
         eventManager.remove(TickListener.class, this);
         eventManager.remove(AttackListener.class, this);
+        toggleActive = false;
+        lastMouseDown = false;
         super.onDisable();
     }
 
     @Override
     public void onTick() {
-        attackedThisTick = false;
-
         if (mc.player == null || mc.world == null || mc.currentScreen != null) return;
-
-        if (holdingWeapon.getValue()) {
-            var item = mc.player.getMainHandStack().getItem();
-            if (!(item instanceof SwordItem || item instanceof AxeItem
-                    || item instanceof TridentItem || item instanceof MaceItem)) return;
-        }
-
-        if (requireClick.getValue()
-                && GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) != GLFW.GLFW_PRESS)
-            return;
-
-        if (attackMode.isMode(AttackMode.Cooldown)) {
-            float progress = mc.player.getAttackCooldownProgress(
-                    (float) 0);
-            if (progress < cooldown.getValue() * 0.01f) return;
-        } else {
-            if (!hitTimer.hasReached(MathUtils.randomInt(attackDelay.getMinInt(), attackDelay.getMaxInt()))) return;
-        }
+        updateToggleState();
+        if (!isActivationSatisfied()) return;
+        if (holdingWeapon.getValue() && !isHoldingWeapon()) return;
+        if (!hitTimer.hasReached(nextDelay)) return;
+        if (mc.player.getAttackCooldownProgress(0) < cooldown.getValueFloat() * 0.01F) return;
 
         if (!(mc.crosshairTarget instanceof EntityHitResult entityHitResult)) return;
-        if (!(entityHitResult.getEntity() instanceof LivingEntity target)) return;
-
+        if (!(entityHitResult.getEntity() instanceof LivingEntity target) || !target.isAlive()) return;
         if (targetMode.isMode(TargetMode.Player) && !(target instanceof PlayerEntity)) return;
+        if (ignoreShield.getValue() && target instanceof PlayerEntity p && p.isBlocking() && p.isHolding(Items.SHIELD)) return;
+        if (priorityCrits.getValue() && shouldWaitForCrit()) return;
 
-        if (ignoreShield.getValue()) {
-            if (target instanceof PlayerEntity p && p.isBlocking() && p.isHolding(Items.SHIELD)) return;
-        }
-
-        if (attackedThisTick) return;
-        attackedThisTick = true;
+        if (inputSimulation.getValue())
+            MouseSimulation.mouseClick(GLFW.GLFW_MOUSE_BUTTON_LEFT, MathUtils.randomInt(18, 42));
 
         WorldUtils.hitEntity(target, true);
         hitTimer.reset();
+        nextDelay = randomDelay() + MathUtils.randomInt(0, jitter.getValueInt());
     }
 
     @Override
     public void onAttack(AttackListener.AttackEvent event) {
-        // no-op
+        // External attack events are intentionally ignored; this module controls its own timing.
+    }
+
+    private void updateToggleState() {
+        boolean down = GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        if (activationMode.isMode(ActivationMode.Toggle) && down && !lastMouseDown)
+            toggleActive = !toggleActive;
+        lastMouseDown = down;
+    }
+
+    private boolean isActivationSatisfied() {
+        if (activationMode.isMode(ActivationMode.Always)) return true;
+        if (activationMode.isMode(ActivationMode.Toggle)) return toggleActive;
+        return GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+    }
+
+    private boolean shouldWaitForCrit() {
+        if (mc.player.isOnGround()) return false;
+        return mc.player.fallDistance <= 0.0F || mc.player.getVelocity().y >= -0.08D;
+    }
+
+    private int randomDelay() {
+        return MathUtils.randomInt(attackDelay.getMinInt(), attackDelay.getMaxInt());
+    }
+
+    private boolean isHoldingWeapon() {
+        Item item = mc.player.getMainHandStack().getItem();
+        return item instanceof SwordItem || item instanceof AxeItem || item instanceof MaceItem || item instanceof TridentItem;
     }
 }

@@ -88,16 +88,19 @@ public final class ClickGui extends Screen {
 	}
 
 	private void renderPanel(DrawContext context, int mouseX, int mouseY) {
-		if (panelColor == null) panelColor = new Color(12, 13, 18, 0);
-		else panelColor = new Color(12, 13, 18, panelColor.getAlpha());
+		if (panelColor == null) panelColor = new Color(8, 12, 24, 0);
+		else panelColor = new Color(8, 12, 24, panelColor.getAlpha());
 		panelColor = ColorUtils.smoothAlphaTransition(0.05F, ClickGUI.alphaWindow.getValueInt(), panelColor);
 
-		if (sidebarColor == null) sidebarColor = new Color(8, 9, 14, 0);
-		else sidebarColor = new Color(8, 9, 14, sidebarColor.getAlpha());
+		if (sidebarColor == null) sidebarColor = new Color(10, 6, 28, 0);
+		else sidebarColor = new Color(10, 6, 28, sidebarColor.getAlpha());
 		sidebarColor = ColorUtils.smoothAlphaTransition(0.05F, Math.min(235, ClickGUI.alphaWindow.getValueInt() + 35), sidebarColor);
 
 		int r = Math.max(12, ClickGUI.roundQuads.getValueInt() + 8);
-		RenderUtils.renderRoundedQuad(context.getMatrices(), new Color(0, 0, 0, 78),
+		RenderUtils.renderRoundedQuad(context.getMatrices(), new Color(0, 240, 255, 38),
+				panelX - 14, panelY - 14, panelX + panelWidth + 14, panelY + panelHeight + 16,
+				r + 8, r + 8, r + 8, r + 8, 18);
+		RenderUtils.renderRoundedQuad(context.getMatrices(), new Color(255, 0, 180, 34),
 				panelX - 10, panelY - 10, panelX + panelWidth + 10, panelY + panelHeight + 12,
 				r + 5, r + 5, r + 5, r + 5, 18);
 		RenderUtils.renderRoundedQuad(context.getMatrices(), panelColor,
@@ -107,18 +110,22 @@ public final class ClickGui extends Screen {
 				panelX, panelY, panelX + SIDEBAR_WIDTH, panelY + panelHeight,
 				r, 0, r, 0, 18);
 
-		context.fillGradient(panelX + SIDEBAR_WIDTH, panelY + 1, panelX + panelWidth - r, panelY + 3,
-				Utils.getMainColor(220, 0).getRGB(), Utils.getMainColor(170, 5).getRGB());
+		context.fillGradient(panelX + SIDEBAR_WIDTH, panelY + 1, panelX + panelWidth - r, panelY + 4,
+				new Color(0, 240, 255, 230).getRGB(), new Color(255, 0, 180, 220).getRGB());
+		context.fill(panelX + panelWidth - 90, panelY + 18, panelX + panelWidth - 36, panelY + 20, new Color(185, 255, 0, 135).getRGB());
+		context.fill(panelX + panelWidth - 116, panelY + 26, panelX + panelWidth - 62, panelY + 28, new Color(255, 0, 230, 110).getRGB());
 
 		TextRenderer.drawString("ARGON", context, panelX + 24, panelY + 32, Color.WHITE.getRGB());
-		TextRenderer.drawString("modern client", context, panelX + 24, panelY + 50, new Color(150, 153, 165).getRGB());
+		TextRenderer.drawString("CYBER // NEON CLIENT", context, panelX + 24, panelY + 50, new Color(0, 240, 255).getRGB());
 
 		int tabY = panelY + 92;
 		int index = 0;
 		for (Category category : Category.values()) {
 			boolean selected = category == selectedCategory;
 			int y = tabY + index * 42;
-			Color tabColor = selected ? Utils.getMainColor(150, index) : new Color(255, 255, 255, isCategoryHovered(category, mouseX, mouseY) ? 18 : 0);
+			Color tabColor = selected
+					? new Color(index % 2 == 0 ? 0 : 255, index % 2 == 0 ? 225 : 0, index % 2 == 0 ? 255 : 190, 155)
+					: new Color(255, 255, 255, isCategoryHovered(category, mouseX, mouseY) ? 22 : 0);
 			RenderUtils.renderRoundedQuad(context.getMatrices(), tabColor,
 					panelX + 14, y, panelX + SIDEBAR_WIDTH - 14, y + 30,
 					8, 8, 8, 8, 12);
