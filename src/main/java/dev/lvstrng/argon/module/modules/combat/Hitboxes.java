@@ -138,8 +138,7 @@ public final class Hitboxes extends Module implements TickListener, ItemUseListe
             mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(
                     fakeYaw,
                     MathHelper.clamp(fakePitch, -89.0F, 89.0F),
-                    mc.player.isOnGround(),
-                    mc.player.horizontalCollision));
+                    mc.player.isOnGround()));
             rotationPacketTimer = 0;
         }
     }
