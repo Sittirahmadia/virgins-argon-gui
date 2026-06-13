@@ -44,7 +44,7 @@ import java.util.UUID;
 
 public final class AnchorMacroV2 extends Module implements TickListener, ItemUseListener, MovementPacketListener, GameRenderListener {
     private enum RotationMode { Silent, Legit, Hybrid }
-    private enum Stage { PLACE, CHARGE, PROTECT, EXPLODE }
+    private enum Stage { PLACE, CHARGE, PREPARE, EXPLODE }
     private enum TargetPriority { Nearest, Lowest_Health, Crosshair }
     private record TrackedAnchor(BlockPos pos, UUID owner, int tick, int seen) {}
 
@@ -70,7 +70,7 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
     private int actionTicks;
     private int actionDelay;
     private int explodeTicks;
-    private int protectTicks;
+    private int prepareTicks;
     private Stage stage = Stage.PLACE;
     private BlockPos activeAnchor;
     private Rotation serverRotation;
@@ -95,7 +95,6 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         eventManager.remove(ItemUseListener.class, this);
         eventManager.remove(MovementPacketListener.class, this);
         eventManager.remove(GameRenderListener.class, this);
-        releaseSafetyKeys();
         reset();
         super.onDisable();
     }
@@ -107,7 +106,7 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         explodeTicks++;
         pruneTrackedAnchors();
         monitorTrackedAnchors();
-        if (!global.getValue() || isUnsafe()) { releaseSafetyKeys(); return; }
+        if (!global.getValue() || isUnsafe()) return;
         if (!isActionReady()) return;
 
         if (activeAnchor == null || !isUsableAnchor(activeAnchor)) {
@@ -146,7 +145,7 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         switch (stage) {
             case PLACE -> placeOptimalAnchor();
             case CHARGE -> charge(activeAnchor);
-            case PROTECT -> protect();
+            case PREPARE -> prepareTotem();
             case EXPLODE -> explode(activeAnchor);
         }
     }
@@ -182,16 +181,15 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         rightClick();
         WorldUtils.placeBlock(centerHit(pos), true);
         track(pos);
-        stage = Stage.PROTECT;
+        stage = Stage.PREPARE;
         resetActionDelay();
     }
 
-    private void protect() {
+    private void prepareTotem() {
         selectConfiguredSlot(totemSlot, Items.TOTEM_OF_UNDYING);
-        AdvancedInputSimulator.setKey(mc.options.sneakKey, true);
-        protectTicks++;
-        if (protectTicks >= 2 + delay.getRandomValueInt()) {
-            protectTicks = 0;
+        prepareTicks++;
+        if (prepareTicks >= 2 + delay.getRandomValueInt()) {
+            prepareTicks = 0;
             stage = Stage.EXPLODE;
         }
     }
@@ -205,7 +203,6 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         explodeTicks = 0;
         activeAnchor = null;
         stage = Stage.PLACE;
-        releaseSafetyKeys();
         resetActionDelay();
     }
 
@@ -243,7 +240,7 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
     private Stage stageFor(BlockPos pos) {
         if (!BlockUtils.isBlock(pos, Blocks.RESPAWN_ANCHOR)) return Stage.PLACE;
         if (BlockUtils.isAnchorNotCharged(pos)) return Stage.CHARGE;
-        return safeAnchor.getValue() ? Stage.PROTECT : Stage.EXPLODE;
+        return safeAnchor.getValue() ? Stage.PREPARE : Stage.EXPLODE;
     }
 
     private boolean canRun() { return mc.player != null && mc.world != null && mc.currentScreen == null && mc.getNetworkHandler() != null; }
@@ -316,17 +313,13 @@ public final class AnchorMacroV2 extends Module implements TickListener, ItemUse
         actionDelay = delay.getRandomValueInt();
     }
 
-    private void releaseSafetyKeys() {
-        if (mc.player != null) AdvancedInputSimulator.setKey(mc.options.sneakKey, false);
-        protectTicks = 0;
-    }
 
     private void reset() {
         ticks = 0;
         actionTicks = 0;
         actionDelay = 0;
         explodeTicks = 0;
-        protectTicks = 0;
+        prepareTicks = 0;
         stage = Stage.PLACE;
         activeAnchor = null;
         serverRotation = null;
