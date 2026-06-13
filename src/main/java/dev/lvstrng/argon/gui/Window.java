@@ -15,12 +15,14 @@ import java.util.ArrayList;
 public final class Window {
 	public ArrayList<ModuleButton> moduleButtons = new ArrayList<>();
 	public int x, y;
-	private final int width, height;
+	private int width;
+	private final int height;
 	public Color currentColor;
 	private final Category category;
 	public boolean dragging, extended;
 	private int dragX, dragY;
 	private int prevX, prevY;
+	private int scrollOffset;
 	public ClickGui parent;
 
 	public Window(int x, int y, int width, int height, Category category, ClickGui parent) {
@@ -47,31 +49,6 @@ public final class Window {
 		if (currentColor.getAlpha() != toAlpha)
 			currentColor = ColorUtils.smoothAlphaTransition(0.05F, toAlpha, currentColor);
 
-		// ── Drop shadow
-		RenderUtils.renderRoundedQuad(context.getMatrices(),
-				new Color(0, 0, 0, Math.min(currentColor.getAlpha() / 2, 50)),
-				prevX - 4, prevY - 4, prevX + width + 4, prevY + height + 4,
-				r + 2, r + 2, 0, 0, 8);
-
-		// ── Header background
-		RenderUtils.renderRoundedQuad(context.getMatrices(), currentColor,
-				prevX, prevY, prevX + width, prevY + height,
-				r, r, 0, 0, 50);
-
-		// ── Thin accent line at bottom of header (gradient)
-		Color c1 = Utils.getMainColor(220, 0);
-		Color c2 = Utils.getMainColor(220, 3);
-		context.fillGradient(prevX + r, prevY + height - 2, prevX + width - r, prevY + height,
-				c1.getRGB(), c2.getRGB());
-
-		// ── Category label centered
-		CharSequence label = category.name;
-		int labelW = TextRenderer.getWidth(label);
-		TextRenderer.drawString(label, context,
-				prevX + width / 2 - labelW / 2,
-				prevY + height / 2 + 3,
-				Color.WHITE.getRGB());
-
 		updateButtons(delta);
 		for (ModuleButton mb : moduleButtons)
 			mb.render(context, mouseX, mouseY, delta);
@@ -93,11 +70,6 @@ public final class Window {
 	}
 
 	public void mouseClicked(double mouseX, double mouseY, int button) {
-		if (isHovered(mouseX, mouseY) && button == 0 && !isDraggingAlready()) {
-			dragging = true;
-			dragX = (int)(mouseX - x);
-			dragY = (int)(mouseY - y);
-		}
 		if (extended)
 			for (ModuleButton mb : moduleButtons) mb.mouseClicked(mouseX, mouseY, button);
 	}
@@ -108,12 +80,12 @@ public final class Window {
 	}
 
 	public void updateButtons(float delta) {
-		int offset = height;
+		int offset = scrollOffset;
 		for (ModuleButton mb : moduleButtons) {
 			mb.animation.animate(0.5 * delta,
 					mb.extended ? height * (mb.settings.size() + 1) : height);
 			mb.offset = offset;
-			offset += (int) mb.animation.getValue();
+			offset += (int) mb.animation.getValue() + 8;
 		}
 	}
 
@@ -123,9 +95,11 @@ public final class Window {
 	}
 
 	public void mouseScrolled(double mouseX, double mouseY, double h, double v) {
-		prevX = x; prevY = y;
-		prevY = (int)(prevY + v * 20);
-		setY((int)(y + v * 20));
+		int contentHeight = moduleButtons.size() * height;
+		for (ModuleButton mb : moduleButtons)
+			if (mb.extended) contentHeight += mb.settings.size() * height;
+		int maxScroll = Math.min(0, 350 - contentHeight);
+		scrollOffset = MathHelper.clamp((int)(scrollOffset + v * 24), maxScroll, 0);
 	}
 
 	public int getX() { return prevX; }
@@ -134,6 +108,11 @@ public final class Window {
 	public void setY(int y) { this.y = y; }
 	public int getWidth()   { return width; }
 	public int getHeight()  { return height; }
+	public Category getCategory() { return category; }
+	public void setPanelBounds(int x, int y, int width) {
+		this.x = x; this.y = y; this.prevX = x; this.prevY = y;
+		this.width = width;
+	}
 
 	public boolean isHovered(double mx, double my) {
 		return mx > x && mx < x + width && my > y && my < y + height;
