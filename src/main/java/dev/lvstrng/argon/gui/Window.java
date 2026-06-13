@@ -105,7 +105,7 @@ public final class Window {
 			contentHeight += height + 8;
 			if (mb.extended) contentHeight += mb.settings.size() * height;
 		}
-		int maxScroll = Math.min(0, parent.getContentHeight() - 130 - contentHeight);
+		int maxScroll = Math.min(0, parent.getContentHeight() - 70 - contentHeight);
 		scrollOffset = MathHelper.clamp((int)(scrollOffset + v * 24), maxScroll, 0);
 	}
 
