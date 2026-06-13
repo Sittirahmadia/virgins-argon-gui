@@ -65,31 +65,42 @@ public final class ModuleButton {
 		boolean isLast = parent.moduleButtons.get(parent.moduleButtons.size() - 1) == this;
 		int r = ClickGUI.roundQuads.getValueInt();
 
-		if (!isLast) {
-			context.fill(parent.getX(), parent.getY() + offset,
-					parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
-					currentColor.getRGB());
-		} else {
-			RenderUtils.renderRoundedQuad(context.getMatrices(), currentColor,
-					parent.getX(), parent.getY() + offset,
-					parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
-					0, 0, animation.getValue() > 30 ? 0 : r, animation.getValue() > 30 ? 0 : r, 50);
-		}
+		Color cardColor = module.isEnabled()
+				? new Color(22, 24, 33, Math.min(230, currentColor.getAlpha() + 45))
+				: new Color(16, 17, 24, Math.min(215, currentColor.getAlpha() + 35));
+		if (module.isEnabled())
+			RenderUtils.renderRoundedQuad(context.getMatrices(), Utils.getMainColor(40, idx),
+					parent.getX() - 3, parent.getY() + offset - 3,
+					parent.getX() + parent.getWidth() + 3, parent.getY() + parent.getHeight() + offset + 3,
+					r + 5, r + 5, r + 5, r + 5, 14);
+		RenderUtils.renderRoundedQuad(context.getMatrices(), new Color(0, 0, 0, 50),
+				parent.getX() + 2, parent.getY() + offset + 4,
+				parent.getX() + parent.getWidth() + 2, parent.getY() + parent.getHeight() + offset + 4,
+				r + 3, r + 3, r + 3, r + 3, 14);
+		RenderUtils.renderRoundedQuad(context.getMatrices(), cardColor,
+				parent.getX(), parent.getY() + offset,
+				parent.getX() + parent.getWidth(), parent.getY() + parent.getHeight() + offset,
+				r + 2, r + 2, r + 2, r + 2, 14);
 
 		// Left accent bar — always rendered, full opacity if enabled, dim if disabled
 		int barAlpha = module.isEnabled() ? 255 : 55;
 		context.fillGradient(
-				parent.getX(),     parent.getY() + offset + 4,
-				parent.getX() + 2, parent.getY() + offset + parent.getHeight() - 4,
+				parent.getX() + 8, parent.getY() + offset + 8,
+				parent.getX() + 12, parent.getY() + offset + parent.getHeight() - 8,
 				Utils.getMainColor(barAlpha, idx).getRGB(),
 				Utils.getMainColor(barAlpha, idx + 1).getRGB());
 
 		// Module name
 		int nameW = TextRenderer.getWidth(module.getName());
 		TextRenderer.drawString(module.getName(), context,
-				parent.getX() + parent.getWidth() / 2 - nameW / 2,
+				parent.getX() + 24,
 				parent.getY() + offset + parent.getHeight() / 2 + 3,
 				defaultColor.getRGB());
+
+		TextRenderer.drawString(module.isEnabled() ? "ON" : "OFF", context,
+				parent.getX() + parent.getWidth() - 34,
+				parent.getY() + offset + parent.getHeight() / 2 + 3,
+				(module.isEnabled() ? Utils.getMainColor(230, idx) : new Color(120, 123, 135)).getRGB());
 
 		renderHover(context, mouseX, mouseY);
 		renderSettings(context, mouseX, mouseY, delta);
